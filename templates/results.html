@@ -41,66 +41,93 @@
     </div>
 
     <script>
-        // --- UTILITY FUNCTIONS ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const resultsContainer = document.getElementById('results-container');
+            const resultsData = localStorage.getItem('analysisResults');
+
+            if (!resultsData) {
+                resultsContainer.innerHTML = createPlaceholderCard();
+                return;
+            }
+
+            try {
+                const results = JSON.parse(resultsData);
+                displayResults(results);
+            } catch (error) {
+                console.error("Failed to parse results from localStorage", error);
+                resultsContainer.innerHTML = createErrorCard('Display Error', 'Could not parse analysis results.');
+            } finally {
+                // Clear the stored data after displaying it
+                localStorage.removeItem('analysisResults');
+            }
+        });
+
         const safeGet = (obj, path, defaultValue = '') => {
             return path.split('.').reduce((acc, part) => acc && acc[part], obj) || defaultValue;
         };
 
-        const createDOMElement = (tag, classNames = [], children = []) => {
-            const element = document.createElement(tag);
-            if (classNames.length) element.className = classNames.join(' ');
-            children.forEach(child => {
-                if (typeof child === 'string') {
-                    element.innerHTML += child; // Use innerHTML for strings that might contain HTML tags
-                } else if (child instanceof Node) {
-                    element.appendChild(child); // Append nodes directly
-                }
-            });
-            return element;
-        };
-
-        // --- COMPONENT CREATION FUNCTIONS ---
         const createSkillList = (skills, type) => {
-            if (!skills || skills.length === 0) return createDOMElement('p', ['text-slate-400', 'text-sm'], ['None identified.']);
-            
-            const iconClass = type === 'possessed' ? 'fa-check-circle text-green-500' : 'fa-times-circle text-red-500';
-            const listItems = skills.map(skill => 
-                createDOMElement('li', ['flex', 'items-center', 'text-slate-600', 'mb-1'], [
-                    `<i class="fas ${iconClass} mr-2"></i>`,
-                    createDOMElement('span', [], [skill])
-                ])
-            );
-            return createDOMElement('ul', [], listItems);
+            if (!skills || skills.length === 0) return `<p class="text-slate-400 text-sm">None identified.</p>`;
+            const icon = type === 'possessed' 
+                ? '<i class="fas fa-check-circle text-green-500 mr-2"></i>'
+                : '<i class="fas fa-times-circle text-red-500 mr-2"></i>';
+            return '<ul>' + skills.map(skill => `<li class="flex items-center text-slate-600 mb-1">${icon}<span>${skill}</span></li>`).join('') + '</ul>';
         };
 
         const createSummaryTable = (csvString) => {
-            if (!csvString || !csvString.trim()) return null;
-
+            if (!csvString || !csvString.trim()) return '';
             const rows = csvString.trim().split('\n').map(row => row.split(','));
             const header = rows.shift();
-
-            const thead = createDOMElement('thead', ['text-xs', 'text-slate-700', 'uppercase'], [
-                createDOMElement('tr', [], header.map(h => `<th scope="col" class="px-6 py-3">${h}</th>`))
-            ]);
-            
-            const tbody = createDOMElement('tbody', [], rows.map(row => 
-                createDOMElement('tr', ['bg-white', 'hover:bg-slate-50'], row.map(cell => `<td class="px-6 py-4">${cell}</td>`))
-            ));
-
-            const table = createDOMElement('table', ['w-full', 'text-sm', 'text-left', 'text-slate-500', 'summary-table'], [thead, tbody]);
-            return createDOMElement('div', ['bg-white', 'rounded-xl', 'shadow-md', 'border', 'border-slate-200', 'overflow-hidden'], [
-                createDOMElement('div', ['p-6'], [
-                    createDOMElement('h3', ['text-xl', 'font-bold', 'text-slate-800', 'mb-4'], ['Analysis Summary']),
-                    createDOMElement('div', ['overflow-x-auto'], [table])
-                ])
-            ]);
+            return `
+                <div class="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
+                    <div class="p-6">
+                        <h3 class="text-xl font-bold text-slate-800 mb-4">Analysis Summary</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm text-left text-slate-500 summary-table">
+                                <thead class="text-xs text-slate-700 uppercase">
+                                    <tr>${header.map(h => `<th scope="col" class="px-6 py-3">${h}</th>`).join('')}</tr>
+                                </thead>
+                                <tbody>
+                                    ${rows.map(row => `<tr class="bg-white hover:bg-slate-50">${row.map(cell => `<td class="px-6 py-4">${cell}</td>`).join('')}</tr>`).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>`;
         };
         
+        const displayResults = (results) => {
+            const resultsContainer = document.getElementById('results-container');
+            resultsContainer.innerHTML = ''; 
+
+            if (results.csv_summary) {
+                resultsContainer.innerHTML += createSummaryTable(results.csv_summary);
+            }
+
+            const detailedResults = safeGet(results, 'detailed_results', []);
+            const successfulResults = detailedResults.filter(r => r.data && r.data.match_analysis);
+            const otherResults = detailedResults.filter(r => !successfulResults.includes(r));
+
+            successfulResults.sort((a, b) => (safeGet(b, 'data.match_analysis.match_score', 0)) - (safeGet(a, 'data.match_analysis.match_score', 0)));
+
+            const sortedResults = [...successfulResults, ...otherResults];
+
+            if (sortedResults.length === 0 && !results.csv_summary) {
+                resultsContainer.innerHTML = createPlaceholderCard();
+                return;
+            }
+            
+            sortedResults.forEach(result => {
+                const cardHtml = result.data ? createSuccessCard(result) : createErrorCard(result.filename, result.reason || result.error, result.status);
+                resultsContainer.innerHTML += cardHtml;
+            });
+        };
+
         const createSuccessCard = (result) => {
             const score = safeGet(result, 'data.match_analysis.match_score', 0);
             const scoreColor = score >= 75 ? 'green' : score >= 50 ? 'amber' : 'red';
             
-            let emailStatusHtml;
+            let emailStatusHtml = '';
             const emailNotification = safeGet(result, 'data.email_notification');
             if (emailNotification) {
                  emailStatusHtml = emailNotification.sent
@@ -110,103 +137,63 @@
                 emailStatusHtml = `<div class="mb-4 p-3 rounded-md text-sm bg-gray-100 border border-gray-200 text-gray-600 flex items-center"><i class="fas fa-info-circle mr-2"></i>Email not sent (e.g., no email found).</div>`;
             }
 
-            const cardContent = createDOMElement('div', ['p-6'], [
-                createDOMElement('div', ['flex', 'flex-col', 'sm:flex-row', 'justify-between', 'items-start', 'sm:items-center', 'mb-4'], [
-                    createDOMElement('div', [], [
-                        createDOMElement('h3', ['text-xl', 'font-bold', 'text-slate-800'], [safeGet(result, 'filename', 'Unknown File')]),
-                        createDOMElement('p', ['text-sm', 'text-slate-500'], [`${safeGet(result, 'data.resume_data.contact_info.name', 'N/A')} - ${safeGet(result, 'data.resume_data.contact_info.email', 'N/A')}`])
-                    ]),
-                    createDOMElement('div', ['w-24', 'text-center', 'mt-3', 'sm:mt-0'], [
-                        `<div class="relative pt-1"><div class="overflow-hidden h-2 text-xs flex rounded bg-${scoreColor}-200"><div style="width:${score}%" class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-${scoreColor}-500"></div></div></div>`,
-                        `<span class="text-2xl font-bold text-${scoreColor}-600">${score}<span class="text-base text-slate-500">/100</span></span>`
-                    ])
-                ]),
-                emailStatusHtml,
-                createDOMElement('div', ['mb-4'], [
-                    createDOMElement('h4', ['font-semibold', 'text-slate-600', 'mb-2'], ['Analysis Summary']),
-                    createDOMElement('p', ['text-slate-500', 'text-sm'], [safeGet(result, 'data.match_analysis.summary', 'No summary available.')])
-                ]),
-                createDOMElement('div', ['grid', 'grid-cols-1', 'md:grid-cols-2', 'gap-6', 'text-sm', 'border-t', 'border-slate-200', 'pt-4'], [
-                    createDOMElement('div', [], [
-                        createDOMElement('h4', ['font-semibold', 'text-slate-600', 'mb-2'], ['Skills Possessed']),
-                        createSkillList(safeGet(result, 'data.match_analysis.skills_possessed', []), 'possessed')
-                    ]),
-                    createDOMElement('div', [], [
-                        createDOMElement('h4', ['font-semibold', 'text-slate-600', 'mb-2'], ['Skills Lacking']),
-                        createSkillList(safeGet(result, 'data.match_analysis.skills_lacking', []), 'lacking')
-                    ])
-                ]),
-                createDOMElement('details', ['mt-4'], [
-                    createDOMElement('summary', ['cursor-pointer', 'font-medium', 'text-sm', 'text-indigo-600', 'hover:text-indigo-800'], ['View Full Report (JSON)']),
-                    createDOMElement('pre', ['mt-2', 'text-xs', 'overflow-x-auto', 'bg-slate-50', 'p-3', 'rounded-md', 'text-slate-600'], [JSON.stringify(result.data, null, 2)])
-                ])
-            ]);
-            return createDOMElement('div', ['bg-white', 'rounded-xl', 'shadow-md', 'border', 'border-slate-200', 'overflow-hidden'], [cardContent]);
+            return `
+                <div class="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
+                    <div class="p-6">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
+                            <div>
+                                <h3 class="text-xl font-bold text-slate-800">${safeGet(result, 'filename', 'Unknown File')}</h3>
+                                <p class="text-sm text-slate-500">${safeGet(result, 'data.resume_data.contact_info.name', 'N/A')} - ${safeGet(result, 'data.resume_data.contact_info.email', 'N/A')}</p>
+                            </div>
+                            <div class="w-24 text-center mt-3 sm:mt-0">
+                                <div class="relative pt-1"><div class="overflow-hidden h-2 text-xs flex rounded bg-${scoreColor}-200"><div style="width:${score}%" class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-${scoreColor}-500"></div></div></div>
+                                <span class="text-2xl font-bold text-${scoreColor}-600">${score}<span class="text-base text-slate-500">/100</span></span>
+                            </div>
+                        </div>
+                        ${emailStatusHtml}
+                        <div class="mb-4">
+                            <h4 class="font-semibold text-slate-600 mb-2">Analysis Summary</h4>
+                            <p class="text-slate-500 text-sm">${safeGet(result, 'data.match_analysis.summary', 'No summary available.')}</p>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm border-t border-slate-200 pt-4">
+                            <div>
+                                <h4 class="font-semibold text-slate-600 mb-2">Skills Possessed</h4>
+                                ${createSkillList(safeGet(result, 'data.match_analysis.skills_possessed', []), 'possessed')}
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-slate-600 mb-2">Skills Lacking</h4>
+                                ${createSkillList(safeGet(result, 'data.match_analysis.skills_lacking', []), 'lacking')}
+                            </div>
+                        </div>
+                        <details class="mt-4">
+                            <summary class="cursor-pointer font-medium text-sm text-indigo-600 hover:text-indigo-800">View Full Report (JSON)</summary>
+                            <pre class="mt-2 text-xs overflow-x-auto bg-slate-50 p-3 rounded-md text-slate-600">${JSON.stringify(result.data, null, 2)}</pre>
+                        </details>
+                    </div>
+                </div>`;
         };
 
         const createErrorCard = (filename, reason, status = 'ERROR') => {
-            return createDOMElement('div', ['bg-white', 'rounded-xl', 'shadow-md', 'border', 'border-red-200', 'overflow-hidden'], [
-                createDOMElement('div', ['p-6'], [
-                    createDOMElement('div', ['flex', 'justify-between', 'items-center', 'mb-2'], [
-                        createDOMElement('h3', ['text-xl', 'font-bold', 'text-red-800'], [filename]),
-                        createDOMElement('span', ['text-sm', 'font-bold', 'bg-red-100', 'text-red-700', 'px-3', 'py-1', 'rounded-full'], [status])
-                    ]),
-                    createDOMElement('p', ['text-red-600'], [reason])
-                ])
-            ]);
+             return `
+                <div class="bg-white rounded-xl shadow-md border border-red-200 overflow-hidden">
+                    <div class="p-6">
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="text-xl font-bold text-red-800">${filename}</h3>
+                            <span class="text-sm font-bold bg-red-100 text-red-700 px-3 py-1 rounded-full">${status}</span>
+                        </div>
+                        <p class="text-red-600">${reason}</p>
+                    </div>
+                </div>`;
         };
         
         const createPlaceholderCard = () => {
-             return createDOMElement('div', ['text-center', 'p-12', 'bg-white', 'rounded-xl', 'shadow-md', 'border', 'border-slate-200'], [
-                '<i class="fas fa-search text-6xl text-slate-300"></i>',
-                createDOMElement('h3', ['mt-4', 'text-2xl', 'font-semibold', 'text-slate-700'], ['No Results Found']),
-                createDOMElement('p', ['text-slate-500', 'mt-1'], ['Please go back and start a new analysis to see results here.'])
-            ]);
+            return `
+                <div class="text-center p-12 bg-white rounded-xl shadow-md border border-slate-200">
+                    <i class="fas fa-search text-6xl text-slate-300"></i>
+                    <h3 class="mt-4 text-2xl font-semibold text-slate-700">No Results Found</h3>
+                    <p class="text-slate-500 mt-1">Please go back and start a new analysis to see results here.</p>
+                </div>`;
         };
-
-        // --- MAIN LOGIC ---
-        document.addEventListener('DOMContentLoaded', () => {
-            const resultsContainer = document.getElementById('results-container');
-            const resultsData = localStorage.getItem('analysisResults');
-
-            if (!resultsData) {
-                resultsContainer.appendChild(createPlaceholderCard());
-                return;
-            }
-
-            try {
-                const results = JSON.parse(resultsData);
-                
-                // Clear container before adding new elements
-                resultsContainer.innerHTML = '';
-                
-                const summaryTable = createSummaryTable(safeGet(results, 'csv_summary'));
-                if (summaryTable) resultsContainer.appendChild(summaryTable);
-                
-                const detailedResults = safeGet(results, 'detailed_results', []);
-                const successfulResults = detailedResults.filter(r => r.data && r.data.match_analysis);
-                const otherResults = detailedResults.filter(r => !successfulResults.includes(r));
-
-                successfulResults.sort((a, b) => (safeGet(b, 'data.match_analysis.match_score', 0)) - (safeGet(a, 'data.match_analysis.match_score', 0)));
-                
-                const sortedResults = [...successfulResults, ...otherResults];
-
-                if (sortedResults.length === 0 && !summaryTable) {
-                    resultsContainer.appendChild(createPlaceholderCard());
-                } else {
-                    sortedResults.forEach(result => {
-                        const card = result.data ? createSuccessCard(result) : createErrorCard(result.filename, result.reason || result.error, result.status);
-                        resultsContainer.appendChild(card);
-                    });
-                }
-            } catch (error) {
-                console.error("Failed to parse or display results", error);
-                resultsContainer.innerHTML = '';
-                resultsContainer.appendChild(createErrorCard('Display Error', 'Could not parse or render analysis results.'));
-            } finally {
-                localStorage.removeItem('analysisResults');
-            }
-        });
     </script>
 </body>
 </html>
