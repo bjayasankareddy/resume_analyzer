@@ -38,12 +38,17 @@ except KeyError as e:
     exit()
 
 # --- Flask App Initialization ---
-app = Flask(__name__, template_folder='templates')
+# The template_folder path needs to be relative to the root for Vercel
+app = Flask(__name__, template_folder='../templates')
 CORS(app)
-UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'pdf', 'docx'}
+
+# --- MODIFICATION FOR VERCEL ---
+# Vercel's serverless environment is read-only, except for the /tmp directory.
+# We must use /tmp for any temporary file operations.
+UPLOAD_FOLDER = '/tmp/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# Create the directory if it doesn't exist
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
@@ -126,12 +131,11 @@ If a section is not found, use an empty list `[]` or null. The output must be ON
     response = model.generate_content(prompt)
     return response.text
 
-# --- NEW: Route for the main upload page ---
+# --- Routes ---
 @app.route('/', methods=['GET'])
 def index():
     """Renders the main upload page."""
     return render_template('index.html')
-
 
 @app.route('/analyze', methods=['POST'])
 def analyze_endpoint():
@@ -148,6 +152,7 @@ def analyze_endpoint():
     if "Error" in jd_text: return f"Failed to process job description: {jd_text}", 500
     
     all_results = []
+    # Core processing logic remains the same...
     for resume_file in resume_files:
         analysis_result = {"filename": resume_file.filename}
         try:
@@ -185,15 +190,13 @@ def analyze_endpoint():
         
         all_results.append(analysis_result)
 
-    # --- GENERATE CSV DATA FOR TEMPLATE ---
+    # Generate CSV data for the template...
     csv_rows = []
     try:
         header = ["Name", "Email", "Score", "Skills Possessed", "Skills Lacking"]
         csv_rows.append(header)
-        
         successful_results = [r for r in all_results if r.get("data")]
         successful_results.sort(key=lambda x: x.get("data", {}).get("match_analysis", {}).get("match_score", 0), reverse=True)
-
         for result in successful_results:
             data = result["data"]
             contact_info = data.get("resume_data", {}).get("contact_info", {})
@@ -219,7 +222,3 @@ def save_temp_file(file):
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(file_path)
     return file_path
-
-if __name__ == '__main__':
-    app.run(debug=True)
-
