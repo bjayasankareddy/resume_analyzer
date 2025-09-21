@@ -37,13 +37,19 @@ except KeyError as e:
     print("Please ensure all required API keys and SMTP variables are set in your .env file.")
     exit()
 
-# --- Flask App Initialization ---
-app = Flask(__name__, template_folder='templates')
+# --- Flask App Initialization (Vercel Compatible) ---
+# When deployed, this file will be in an 'api' folder, so we point to the parent directory for templates.
+app = Flask(__name__, template_folder='../templates')
 CORS(app)
-UPLOAD_FOLDER = 'uploads'
+
+# --- MODIFICATION FOR VERCEL DEPLOYMENT ---
+# Vercel's filesystem is read-only, except for the /tmp directory.
+# We must use /tmp for any temporary file operations.
+UPLOAD_FOLDER = '/tmp/uploads'
 ALLOWED_EXTENSIONS = {'pdf', 'docx'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# Create the directory if it doesn't exist at runtime
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
@@ -126,7 +132,7 @@ If a section is not found, use an empty list `[]` or null. The output must be ON
     response = model.generate_content(prompt)
     return response.text
 
-# --- NEW: Route for the main upload page ---
+# --- Route for the main upload page ---
 @app.route('/', methods=['GET'])
 def index():
     """Renders the main upload page."""
