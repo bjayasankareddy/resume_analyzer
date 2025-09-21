@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VeriSkill - AI Resume Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .file-input-label {
+            cursor: pointer;
+            border: 2px dashed #cbd5e1;
+            padding: 2rem 1rem;
+            transition: all 0.2s ease-in-out;
+        }
+        .file-input-label:hover {
+            border-color: #4f46e5;
+            background-color: #f8fafc;
+        }
+        .loader {
+            border-top-color: #4f46e5;
+        }
+        .summary-table th {
+            background-color: #f1f5f9;
+        }
+        .summary-table th, .summary-table td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+
+        <header class="mb-8">
+            <h1 class="text-4xl font-bold text-slate-900">VeriSkill Dashboard</h1>
+            <p class="mt-2 text-lg text-slate-600">Automated Resume Analysis & Verification</p>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+            <aside class="lg:col-span-1">
+                <div class="bg-white p-6 rounded-xl shadow-md border border-slate-200 sticky top-8">
+                    <h2 class="text-2xl font-semibold text-slate-800 border-b pb-3 mb-4">New Analysis</h2>
+                    <form id="uploadForm" class="space-y-6">
+                        <div id="form-error" class="hidden bg-red-50 border-l-4 border-red-400 text-red-700 p-4 rounded-md text-sm">
+                            <p>Please select both a job description and at least one resume file.</p>
+                        </div>
+                        <div>
+                            <label class="block text-md font-medium text-slate-700 mb-2">1. Upload Job Description</label>
+                            <label for="jdFile" class="file-input-label flex flex-col items-center justify-center text-center rounded-lg">
+                                <i class="fas fa-file-alt text-3xl text-slate-400 mb-2"></i>
+                                <span class="font-semibold text-indigo-600">Click to upload</span>
+                                <span id="jd-filename" class="text-sm text-slate-500 mt-1">PDF or DOCX</span>
+                            </label>
+                            <input type="file" id="jdFile" name="job_description" class="hidden" required>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-md font-medium text-slate-700 mb-2">2. Upload Resumes</label>
+                             <label for="resumeFiles" class="file-input-label flex flex-col items-center justify-center text-center rounded-lg">
+                                <i class="fas fa-users text-3xl text-slate-400 mb-2"></i>
+                                <span class="font-semibold text-indigo-600">Click to upload</span>
+                                <span id="resume-filenames" class="text-sm text-slate-500 mt-1">Select one or more files</span>
+                            </label>
+                            <input type="file" id="resumeFiles" name="resumes" class="hidden" multiple required>
+                        </div>
+
+                        <div>
+                            <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 ease-in-out transform hover:scale-105 flex items-center justify-center">
+                                <i class="fas fa-magic-wand-sparkles mr-2"></i>
+                                Analyze Now
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </aside>
+
+            <section class="lg:col-span-2">
+                 <div id="results-container" class="space-y-6">
+                    <div id="placeholder" class="text-center p-12 bg-white rounded-xl shadow-md border border-slate-200">
+                        <i class="fas fa-clipboard-list text-6xl text-slate-300"></i>
+                        <h3 class="mt-4 text-2xl font-semibold text-slate-700">Analysis Results</h3>
+                        <p class="text-slate-500 mt-1">Your analysis results will appear here once submitted.</p>
+                    </div>
+                    <div id="loading" class="hidden text-center p-12 bg-white rounded-xl shadow-md border border-slate-200">
+                        <div class="flex items-center justify-center">
+                            <div class="loader ease-linear rounded-full border-4 border-t-4 border-slate-200 h-12 w-12 animate-spin"></div>
+                        </div>
+                        <h3 class="mt-4 text-2xl font-semibold text-slate-700 animate-pulse">Running Analysis...</h3>
+                        <p class="text-slate-500 mt-1">Please wait while the AI processes the documents.</p>
+                    </div>
+                 </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const jdFileInput = document.getElementById('jdFile');
+        const resumeFilesInput = document.getElementById('resumeFiles');
+        const jdFilenameSpan = document.getElementById('jd-filename');
+        const resumeFilenamesSpan = document.getElementById('resume-filenames');
+        
+        const resultsContainer = document.getElementById('results-container');
+        const placeholderDiv = document.getElementById('placeholder');
+        const loadingDiv = document.getElementById('loading');
+        const formErrorDiv = document.getElementById('form-error');
+
+        jdFileInput.addEventListener('change', () => {
+            jdFilenameSpan.textContent = jdFileInput.files[0] ? jdFileInput.files[0].name : 'PDF or DOCX';
+        });
+        resumeFilesInput.addEventListener('change', () => {
+            const count = resumeFilesInput.files.length;
+            resumeFilenamesSpan.textContent = count > 1 ? `${count} files selected` : count === 1 ? resumeFilesInput.files[0].name : 'Select one or more files';
+        });
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            
+            const formData = new FormData(form);
+            if (!jdFileInput.files[0] || resumeFilesInput.files.length === 0) {
+                formErrorDiv.classList.remove('hidden');
+                return;
+            }
+            formErrorDiv.classList.add('hidden');
+
+            placeholderDiv.classList.add('hidden');
+            loadingDiv.classList.remove('hidden');
+            resultsContainer.innerHTML = '';
+            resultsContainer.appendChild(loadingDiv);
+
+            try {
+                const response = await fetch('http://127.0.0.1:5000/analyze', {
+                    method: 'POST',
+                    body: formData,
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const results = await response.json();
+                displayResults(results);
+            } catch (error) {
+                console.error('Error:', error);
+                resultsContainer.innerHTML = '';
+                resultsContainer.appendChild(createErrorCard('Connection Error', `Could not connect to the analysis server. Please ensure it's running and try again.`));
+            } finally {
+                loadingDiv.classList.add('hidden');
+            }
+        });
+
+        const safeGet = (obj, path, defaultValue = '') => {
+            return path.split('.').reduce((acc, part) => acc && acc[part], obj) || defaultValue;
+        };
+        
+        const createDOMElement = (tag, classNames = [], children = []) => {
+            const element = document.createElement(tag);
+            if (classNames.length) element.className = classNames.join(' ');
+            children.forEach(child => {
+                if (typeof child === 'string') {
+                    element.innerHTML += child;
+                } else {
+                    element.appendChild(child);
+                }
+            });
+            return element;
+        };
+
+        const createSkillList = (skills, type) => {
+            if (!skills || skills.length === 0) return createDOMElement('p', ['text-slate-400', 'text-sm'], ['None identified.']);
+            
+            const iconClass = type === 'possessed' ? 'fa-check-circle text-green-500' : 'fa-times-circle text-red-500';
+            const listItems = skills.map(skill => 
+                createDOMElement('li', ['flex', 'items-center', 'text-slate-600', 'mb-1'], [
+                    `<i class="fas ${iconClass} mr-2"></i>`,
+                    createDOMElement('span', [], [skill])
+                ])
+            );
+            return createDOMElement('ul', [], listItems);
+        };
+
+        const createSummaryTable = (csvString) => {
+            if (!csvString || !csvString.trim()) return null;
+
+            const rows = csvString.trim().split('\n').map(row => row.split(','));
+            const header = rows.shift();
+
+            const thead = createDOMElement('thead', ['text-xs', 'text-slate-700', 'uppercase'], [
+                createDOMElement('tr', [], header.map(h => `<th scope="col" class="px-6 py-3">${h}</th>`))
+            ]);
+            
+            const tbody = createDOMElement('tbody', [], rows.map(row => 
+                createDOMElement('tr', ['bg-white', 'hover:bg-slate-50'], row.map(cell => `<td class="px-6 py-4">${cell}</td>`))
+            ));
+
+            const table = createDOMElement('table', ['w-full', 'text-sm', 'text-left', 'text-slate-500', 'summary-table'], [thead, tbody]);
+            const container = createDOMElement('div', ['bg-white', 'rounded-xl', 'shadow-md', 'border', 'border-slate-200', 'overflow-hidden'], [
+                createDOMElement('div', ['p-6'], [
+                    createDOMElement('h3', ['text-xl', 'font-bold', 'text-slate-800', 'mb-4'], ['Analysis Summary']),
+                    createDOMElement('div', ['overflow-x-auto'], [table])
+                ])
+            ]);
+            return container;
+        };
+
+        const displayResults = (results) => {
+            resultsContainer.innerHTML = ''; 
+
+            const summaryTable = createSummaryTable(safeGet(results, 'csv_summary'));
+            if (summaryTable) resultsContainer.appendChild(summaryTable);
+            
+            const detailedResults = safeGet(results, 'detailed_results', []);
+            const successfulResults = detailedResults.filter(r => r.data && r.data.match_analysis);
+            const otherResults = detailedResults.filter(r => !successfulResults.includes(r));
+
+            successfulResults.sort((a, b) => (safeGet(b, 'data.match_analysis.match_score', 0)) - (safeGet(a, 'data.match_analysis.match_score', 0)));
+
+            const sortedResults = [...successfulResults, ...otherResults];
+
+            if (sortedResults.length === 0 && !summaryTable) {
+                resultsContainer.appendChild(placeholderDiv);
+                placeholderDiv.classList.remove('hidden');
+                return;
+            }
+            
+            sortedResults.forEach(result => {
+                const card = result.data ? createSuccessCard(result) : createErrorCard(result.filename, result.reason || result.error, result.status);
+                resultsContainer.appendChild(card);
+            });
+        };
+
+        const createSuccessCard = (result) => {
+            const score = safeGet(result, 'data.match_analysis.match_score', 0);
+            const scoreColor = score >= 75 ? 'green' : score >= 50 ? 'amber' : 'red';
+            
+            let emailStatusHtml;
+            const emailNotification = safeGet(result, 'data.email_notification');
+            if (emailNotification) {
+                 emailStatusHtml = emailNotification.sent
+                    ? `<div class="mb-4 p-3 rounded-md text-sm bg-green-50 border border-green-200 text-green-800 flex items-center"><i class="fas fa-check-circle mr-2"></i>Email notification sent successfully.</div>`
+                    : `<div class="mb-4 p-3 rounded-md text-sm bg-red-50 border border-red-200 text-red-800 flex items-center"><i class="fas fa-exclamation-triangle mr-2"></i>Email failed: ${emailNotification.status}</div>`;
+            } else {
+                emailStatusHtml = `<div class="mb-4 p-3 rounded-md text-sm bg-gray-100 border border-gray-200 text-gray-600 flex items-center"><i class="fas fa-info-circle mr-2"></i>Email not sent (e.g., no email found).</div>`;
+            }
+
+            const card = createDOMElement('div', ['bg-white', 'rounded-xl', 'shadow-md', 'border', 'border-slate-200', 'overflow-hidden'], [
+                createDOMElement('div', ['p-6'], [
+                    createDOMElement('div', ['flex', 'flex-col', 'sm:flex-row', 'justify-between', 'items-start', 'sm:items-center', 'mb-4'], [
+                        createDOMElement('div', [], [
+                            createDOMElement('h3', ['text-xl', 'font-bold', 'text-slate-800'], [safeGet(result, 'filename', 'Unknown File')]),
+                            createDOMElement('p', ['text-sm', 'text-slate-500'], [`${safeGet(result, 'data.resume_data.contact_info.name', 'N/A')} - ${safeGet(result, 'data.resume_data.contact_info.email', 'N/A')}`])
+                        ]),
+                        createDOMElement('div', ['w-24', 'text-center', 'mt-3', 'sm:mt-0'], [
+                            `<div class="relative pt-1"><div class="overflow-hidden h-2 text-xs flex rounded bg-${scoreColor}-200"><div style="width:${score}%" class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-${scoreColor}-500"></div></div></div>`,
+                            `<span class="text-2xl font-bold text-${scoreColor}-600">${score}<span class="text-base text-slate-500">/100</span></span>`
+                        ])
+                    ]),
+                    emailStatusHtml,
+                    createDOMElement('div', ['mb-4'], [
+                        createDOMElement('h4', ['font-semibold', 'text-slate-600', 'mb-2'], ['Analysis Summary']),
+                        createDOMElement('p', ['text-slate-500', 'text-sm'], [safeGet(result, 'data.match_analysis.summary', 'No summary available.')])
+                    ]),
+                    createDOMElement('div', ['grid', 'grid-cols-1', 'md:grid-cols-2', 'gap-6', 'text-sm', 'border-t', 'border-slate-200', 'pt-4'], [
+                        createDOMElement('div', [], [
+                            createDOMElement('h4', ['font-semibold', 'text-slate-600', 'mb-2'], ['Skills Possessed']),
+                            createSkillList(safeGet(result, 'data.match_analysis.skills_possessed', []), 'possessed')
+                        ]),
+                        createDOMElement('div', [], [
+                            createDOMElement('h4', ['font-semibold', 'text-slate-600', 'mb-2'], ['Skills Lacking']),
+                            createSkillList(safeGet(result, 'data.match_analysis.skills_lacking', []), 'lacking')
+                        ])
+                    ]),
+                    createDOMElement('details', ['mt-4'], [
+                        createDOMElement('summary', ['cursor-pointer', 'font-medium', 'text-sm', 'text-indigo-600', 'hover:text-indigo-800'], ['View Full Report (JSON)']),
+                        createDOMElement('pre', ['mt-2', 'text-xs', 'overflow-x-auto', 'bg-slate-50', 'p-3', 'rounded-md', 'text-slate-600'], [JSON.stringify(result.data, null, 2)])
+                    ])
+                ])
+            ]);
+            return card;
+        };
+
+        const createErrorCard = (filename, reason, status = 'ERROR') => {
+            return createDOMElement('div', ['bg-white', 'rounded-xl', 'shadow-md', 'border', 'border-red-200', 'overflow-hidden'], [
+                createDOMElement('div', ['p-6'], [
+                    createDOMElement('div', ['flex', 'justify-between', 'items-center', 'mb-2'], [
+                        createDOMElement('h3', ['text-xl', 'font-bold', 'text-red-800'], [filename]),
+                        createDOMElement('span', ['text-sm', 'font-bold', 'bg-red-100', 'text-red-700', 'px-3', 'py-1', 'rounded-full'], [status])
+                    ]),
+                    createDOMElement('p', ['text-red-600'], [reason])
+                ])
+            ]);
+        };
+    </script>
+</body>
+</html>
+
