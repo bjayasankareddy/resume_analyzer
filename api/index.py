@@ -38,21 +38,19 @@ except KeyError as e:
     exit()
 
 # --- Flask App Initialization ---
-# The template_folder path needs to be relative to the root for Vercel
 app = Flask(__name__, template_folder='../templates')
 CORS(app)
 
-# --- MODIFICATION FOR VERCEL ---
 # Vercel's serverless environment is read-only, except for the /tmp directory.
-# We must use /tmp for any temporary file operations.
 UPLOAD_FOLDER = '/tmp/uploads'
+ALLOWED_EXTENSIONS = {'pdf', 'docx'} # This line was missing
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # Create the directory if it doesn't exist
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# --- Helper Functions (No changes needed) ---
+# --- Helper Functions ---
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -73,7 +71,6 @@ def parse_file(file_path):
             except OSError as e: print(f"Error removing temp file {file_path}: {e}")
 
 def send_email_to_candidate(candidate_email, candidate_name, reasoning, match_score):
-    # This function remains unchanged
     if not candidate_email: return False, "No email address found"
     msg = EmailMessage()
     msg['Subject'] = 'Your Resume Analysis Results'
@@ -94,7 +91,6 @@ def send_email_to_candidate(candidate_email, candidate_name, reasoning, match_sc
         return False, str(e)
 
 def analyze_resume_and_jd(resume_text, jd_text):
-    # This function remains unchanged
     model = genai.GenerativeModel('gemini-1.5-flash-latest')
     prompt = f"""
 You are an expert HR recruitment assistant. Analyze the provided resume and job description.
@@ -134,7 +130,6 @@ If a section is not found, use an empty list `[]` or null. The output must be ON
 # --- Routes ---
 @app.route('/', methods=['GET'])
 def index():
-    """Renders the main upload page."""
     return render_template('index.html')
 
 @app.route('/analyze', methods=['POST'])
@@ -152,7 +147,6 @@ def analyze_endpoint():
     if "Error" in jd_text: return f"Failed to process job description: {jd_text}", 500
     
     all_results = []
-    # Core processing logic remains the same...
     for resume_file in resume_files:
         analysis_result = {"filename": resume_file.filename}
         try:
@@ -190,7 +184,6 @@ def analyze_endpoint():
         
         all_results.append(analysis_result)
 
-    # Generate CSV data for the template...
     csv_rows = []
     try:
         header = ["Name", "Email", "Score", "Skills Possessed", "Skills Lacking"]
@@ -222,3 +215,4 @@ def save_temp_file(file):
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(file_path)
     return file_path
+
