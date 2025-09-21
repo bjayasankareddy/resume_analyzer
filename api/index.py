@@ -38,19 +38,16 @@ except KeyError as e:
     exit()
 
 # --- Flask App Initialization ---
-app = Flask(__name__, template_folder='../templates')
+app = Flask(__name__, template_folder='templates')
 CORS(app)
-
-# Vercel's serverless environment is read-only, except for the /tmp directory.
-UPLOAD_FOLDER = '/tmp/uploads'
-ALLOWED_EXTENSIONS = {'pdf', 'docx'} # This line was missing
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'pdf', 'docx'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Create the directory if it doesn't exist
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# --- Helper Functions ---
+# --- Helper Functions (No changes needed) ---
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -71,6 +68,7 @@ def parse_file(file_path):
             except OSError as e: print(f"Error removing temp file {file_path}: {e}")
 
 def send_email_to_candidate(candidate_email, candidate_name, reasoning, match_score):
+    # This function remains unchanged
     if not candidate_email: return False, "No email address found"
     msg = EmailMessage()
     msg['Subject'] = 'Your Resume Analysis Results'
@@ -91,6 +89,7 @@ def send_email_to_candidate(candidate_email, candidate_name, reasoning, match_sc
         return False, str(e)
 
 def analyze_resume_and_jd(resume_text, jd_text):
+    # This function remains unchanged
     model = genai.GenerativeModel('gemini-1.5-flash-latest')
     prompt = f"""
 You are an expert HR recruitment assistant. Analyze the provided resume and job description.
@@ -127,10 +126,12 @@ If a section is not found, use an empty list `[]` or null. The output must be ON
     response = model.generate_content(prompt)
     return response.text
 
-# --- Routes ---
+# --- NEW: Route for the main upload page ---
 @app.route('/', methods=['GET'])
 def index():
+    """Renders the main upload page."""
     return render_template('index.html')
+
 
 @app.route('/analyze', methods=['POST'])
 def analyze_endpoint():
@@ -184,12 +185,15 @@ def analyze_endpoint():
         
         all_results.append(analysis_result)
 
+    # --- GENERATE CSV DATA FOR TEMPLATE ---
     csv_rows = []
     try:
         header = ["Name", "Email", "Score", "Skills Possessed", "Skills Lacking"]
         csv_rows.append(header)
+        
         successful_results = [r for r in all_results if r.get("data")]
         successful_results.sort(key=lambda x: x.get("data", {}).get("match_analysis", {}).get("match_score", 0), reverse=True)
+
         for result in successful_results:
             data = result["data"]
             contact_info = data.get("resume_data", {}).get("contact_info", {})
@@ -215,4 +219,7 @@ def save_temp_file(file):
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(file_path)
     return file_path
+
+if __name__ == '__main__':
+    app.run(debug=True)
 
