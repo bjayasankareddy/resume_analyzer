@@ -38,7 +38,7 @@ except KeyError as e:
     exit()
 
 # --- Flask App Initialization (Vercel Compatible) ---
-app = Flask(__name__, template_folder='../templates')
+app = Flask(__name__, template_folder='templates')
 CORS(app)
 
 UPLOAD_FOLDER = '/tmp/uploads'
@@ -194,7 +194,7 @@ def analyze_endpoint():
             successful_results.sort(key=lambda x: x.get("data", {}).get("match_analysis", {}).get("match_score", 0), reverse=True)
 
             for result in successful_results:
-                data = result["data"]
+                data = result.get("data", {})
                 contact_info = data.get("resume_data", {}).get("contact_info", {})
                 match_analysis = data.get("match_analysis", {})
                 skills_possessed_str = ", ".join(match_analysis.get("skills_possessed", []))
