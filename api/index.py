@@ -37,17 +37,25 @@ except KeyError as e:
     print("Please ensure all required API keys and SMTP variables are set in your .env file.")
     exit()
 
-# --- Flask App Initialization ---
-app = Flask(__name__, template_folder='templates')
+# --- Flask App Initialization (Vercel Compatible) ---
+# Use an absolute path to robustly locate the templates folder
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATE_DIR = os.path.join(os.path.dirname(BASE_DIR), 'templates')
+app = Flask(__name__, template_folder=TEMPLATE_DIR)
 CORS(app)
-UPLOAD_FOLDER = 'uploads'
+
+# --- MODIFICATION FOR VERCEL ---
+# Vercel's filesystem is read-only, except for the /tmp directory.
+# We must use /tmp for any temporary file operations.
+UPLOAD_FOLDER = '/tmp/uploads'
 ALLOWED_EXTENSIONS = {'pdf', 'docx'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# Create the directory if it doesn't exist at runtime
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# --- Helper Functions (No changes needed) ---
+# --- Helper Functions (No changes) ---
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -68,7 +76,6 @@ def parse_file(file_path):
             except OSError as e: print(f"Error removing temp file {file_path}: {e}")
 
 def send_email_to_candidate(candidate_email, candidate_name, reasoning, match_score):
-    # This function remains unchanged
     if not candidate_email: return False, "No email address found"
     msg = EmailMessage()
     msg['Subject'] = 'Your Resume Analysis Results'
@@ -89,7 +96,6 @@ def send_email_to_candidate(candidate_email, candidate_name, reasoning, match_sc
         return False, str(e)
 
 def analyze_resume_and_jd(resume_text, jd_text):
-    # This function remains unchanged
     model = genai.GenerativeModel('gemini-1.5-flash-latest')
     prompt = f"""
 You are an expert HR recruitment assistant. Analyze the provided resume and job description.
@@ -126,93 +132,97 @@ If a section is not found, use an empty list `[]` or null. The output must be ON
     response = model.generate_content(prompt)
     return response.text
 
-# --- NEW: Route for the main upload page ---
+# --- Routes ---
 @app.route('/', methods=['GET'])
 def index():
     """Renders the main upload page."""
     return render_template('index.html')
 
-
 @app.route('/analyze', methods=['POST'])
 def analyze_endpoint():
-    if 'resumes' not in request.files or 'job_description' not in request.files:
-        return "Both 'resumes' and 'job_description' files are required.", 400
-    
-    resume_files = request.files.getlist('resumes')
-    jd_file = request.files['job_description']
-    
-    if not resume_files or not jd_file or jd_file.filename == '':
-         return "No file selected for one or both inputs.", 400
-
-    jd_text = parse_file(save_temp_file(jd_file))
-    if "Error" in jd_text: return f"Failed to process job description: {jd_text}", 500
-    
-    all_results = []
-    for resume_file in resume_files:
-        analysis_result = {"filename": resume_file.filename}
-        try:
-            if not allowed_file(resume_file.filename): raise ValueError("Invalid file type")
-            resume_text = parse_file(save_temp_file(resume_file))
-            if "Error" in resume_text: raise ValueError(f"Failed to parse file: {resume_text}")
-            
-            extracted_json_str = analyze_resume_and_jd(resume_text, jd_text)
-            try:
-                cleaned_str = extracted_json_str.strip().replace('```json', '').replace('```', '')
-                parsed_json = json.loads(cleaned_str)
-            except json.JSONDecodeError:
-                raise ValueError("AI model returned invalid JSON.")
-
-            if not parsed_json.get("resume_data", {}).get("projects"):
-                analysis_result.update({"status": "REJECTED", "reason": "No projects found in resume."})
-                all_results.append(analysis_result)
-                continue
-            
-            contact_info = parsed_json.get("resume_data", {}).get("contact_info", {})
-            match_analysis = parsed_json.get("match_analysis", {})
-            if contact_info.get("email") and match_analysis.get("reasoning"):
-                sent, status = send_email_to_candidate(
-                    candidate_email=contact_info.get("email"),
-                    candidate_name=contact_info.get("name"),
-                    reasoning=match_analysis.get("reasoning"),
-                    match_score=match_analysis.get("match_score")
-                )
-                parsed_json["email_notification"] = {"sent": sent, "status": status}
-
-            analysis_result["data"] = parsed_json
-        except Exception as e:
-            print(f"!!! ERROR processing {resume_file.filename}: {e}")
-            analysis_result.update({"status": "FAILED", "reason": str(e)})
-        
-        all_results.append(analysis_result)
-
-    # --- GENERATE CSV DATA FOR TEMPLATE ---
-    csv_rows = []
     try:
-        header = ["Name", "Email", "Score", "Skills Possessed", "Skills Lacking"]
-        csv_rows.append(header)
+        if 'resumes' not in request.files or 'job_description' not in request.files:
+            return render_template('error.html', error_message="Both 'resumes' and 'job_description' files are required.")
         
-        successful_results = [r for r in all_results if r.get("data")]
-        successful_results.sort(key=lambda x: x.get("data", {}).get("match_analysis", {}).get("match_score", 0), reverse=True)
+        resume_files = request.files.getlist('resumes')
+        jd_file = request.files['job_description']
+        
+        if not resume_files or not jd_file or jd_file.filename == '':
+             return render_template('error.html', error_message="No file selected for one or both inputs.")
 
-        for result in successful_results:
-            data = result["data"]
-            contact_info = data.get("resume_data", {}).get("contact_info", {})
-            match_analysis = data.get("match_analysis", {})
-            skills_possessed_str = ", ".join(match_analysis.get("skills_possessed", []))
-            skills_lacking_str = ", ".join(match_analysis.get("skills_lacking", []))
-            row = [
-                contact_info.get("name", "N/A"),
-                contact_info.get("email", "N/A"),
-                match_analysis.get("match_score", "N/A"),
-                skills_possessed_str,
-                skills_lacking_str
-            ]
-            csv_rows.append(row)
-    except Exception as e:
-        print(f"Could not generate CSV data: {e}")
+        jd_text = parse_file(save_temp_file(jd_file))
+        if "Error" in jd_text: 
+            return render_template('error.html', error_message=f"Failed to process job description: {jd_text}")
+        
+        all_results = []
+        for resume_file in resume_files:
+            analysis_result = {"filename": resume_file.filename}
+            try:
+                if not allowed_file(resume_file.filename): raise ValueError("Invalid file type")
+                resume_text = parse_file(save_temp_file(resume_file))
+                if "Error" in resume_text: raise ValueError(f"Failed to parse file: {resume_text}")
+                
+                extracted_json_str = analyze_resume_and_jd(resume_text, jd_text)
+                try:
+                    cleaned_str = extracted_json_str.strip().replace('```json', '').replace('```', '')
+                    parsed_json = json.loads(cleaned_str)
+                except json.JSONDecodeError:
+                    raise ValueError("AI model returned invalid JSON.")
+
+                if not parsed_json.get("resume_data", {}).get("projects"):
+                    analysis_result.update({"status": "REJECTED", "reason": "No projects found in resume."})
+                    all_results.append(analysis_result)
+                    continue
+                
+                contact_info = parsed_json.get("resume_data", {}).get("contact_info", {})
+                match_analysis = parsed_json.get("match_analysis", {})
+                if contact_info.get("email") and match_analysis.get("reasoning"):
+                    sent, status = send_email_to_candidate(
+                        candidate_email=contact_info.get("email"),
+                        candidate_name=contact_info.get("name"),
+                        reasoning=match_analysis.get("reasoning"),
+                        match_score=match_analysis.get("match_score")
+                    )
+                    parsed_json["email_notification"] = {"sent": sent, "status": status}
+
+                analysis_result["data"] = parsed_json
+            except Exception as e:
+                print(f"!!! ERROR processing {resume_file.filename}: {e}")
+                analysis_result.update({"status": "FAILED", "reason": str(e)})
+            
+            all_results.append(analysis_result)
+
+        csv_rows = []
+        try:
+            header = ["Name", "Email", "Score", "Skills Possessed", "Skills Lacking"]
+            csv_rows.append(header)
+            
+            successful_results = [r for r in all_results if r.get("data")]
+            successful_results.sort(key=lambda x: x.get("data", {}).get("match_analysis", {}).get("match_score", 0), reverse=True)
+
+            for result in successful_results:
+                data = result.get("data", {})
+                contact_info = data.get("resume_data", {}).get("contact_info", {})
+                match_analysis = data.get("match_analysis", {})
+                skills_possessed_str = ", ".join(match_analysis.get("skills_possessed", []))
+                skills_lacking_str = ", ".join(match_analysis.get("skills_lacking", []))
+                row = [
+                    contact_info.get("name", "N/A"),
+                    contact_info.get("email", "N/A"),
+                    match_analysis.get("match_score", "N/A"),
+                    skills_possessed_str,
+                    skills_lacking_str
+                ]
+                csv_rows.append(row)
+        except Exception as e:
+            print(f"Could not generate CSV data: {e}")
+        
+        all_results.sort(key=lambda x: x.get("data", {}).get("match_analysis", {}).get("match_score", 0), reverse=True)
+        return render_template('results.html', detailed_results=all_results, summary_data=csv_rows)
     
-    all_results.sort(key=lambda x: x.get("data", {}).get("match_analysis", {}).get("match_score", 0), reverse=True)
-    return render_template('results.html', detailed_results=all_results, summary_data=csv_rows)
+    except Exception as e:
+        print(f"!!! A critical error occurred in the analyze endpoint: {e}")
+        return render_template('error.html', error_message=f"A critical server error occurred: {e}")
 
 def save_temp_file(file):
     filename = secure_filename(file.filename)
