@@ -1,0 +1,8 @@
+Flask
+PyMuPDF
+python-docx
+google-generativeai
+requests
+python-dotenv
+PyGithub
+Flask-Cors
