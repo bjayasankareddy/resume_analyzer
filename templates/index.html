@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VeriSkill - New Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .file-input-label { cursor: pointer; border: 2px dashed #cbd5e1; padding: 2rem 1rem; transition: all 0.2s ease-in-out; }
+        .file-input-label:hover { border-color: #4f46e5; background-color: #f8fafc; }
+        .loader { border-top-color: #4f46e5; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 flex items-center justify-center min-h-screen">
+
+    <main class="container mx-auto p-4 max-w-2xl">
+        <div class="bg-white p-6 sm:p-8 rounded-xl shadow-lg border border-slate-200">
+            <header class="text-center mb-6">
+                <h1 class="text-4xl font-bold text-slate-900">Start New Analysis</h1>
+                <p class="mt-2 text-md text-slate-600">Upload your documents to begin.</p>
+            </header>
+            
+            <form id="uploadForm" action="/analyze" method="POST" enctype="multipart/form-data" class="space-y-6">
+                <div id="loading" class="hidden text-center py-4">
+                    <div class="flex items-center justify-center">
+                        <div class="loader ease-linear rounded-full border-4 border-t-4 border-slate-200 h-12 w-12 animate-spin"></div>
+                    </div>
+                    <h3 class="mt-4 text-lg font-semibold text-slate-700 animate-pulse">Running Analysis...</h3>
+                    <p class="text-slate-500 mt-1 text-sm">Your results will load shortly.</p>
+                </div>
+
+                <div>
+                    <label class="block text-md font-medium text-slate-700 mb-2">1. Upload Job Description</label>
+                    <label for="jdFile" class="file-input-label flex flex-col items-center justify-center text-center rounded-lg">
+                        <i class="fas fa-file-alt text-3xl text-slate-400 mb-2"></i>
+                        <span class="font-semibold text-indigo-600">Click to upload</span>
+                        <span id="jd-filename" class="text-sm text-slate-500 mt-1">PDF or DOCX</span>
+                    </label>
+                    <input type="file" id="jdFile" name="job_description" class="hidden" required>
+                </div>
+                
+                <div>
+                    <label class="block text-md font-medium text-slate-700 mb-2">2. Upload Resumes</label>
+                     <label for="resumeFiles" class="file-input-label flex flex-col items-center justify-center text-center rounded-lg">
+                        <i class="fas fa-users text-3xl text-slate-400 mb-2"></i>
+                        <span class="font-semibold text-indigo-600">Click to upload</span>
+                        <span id="resume-filenames" class="text-sm text-slate-500 mt-1">Select one or more files</span>
+                    </label>
+                    <input type="file" id="resumeFiles" name="resumes" class="hidden" multiple required>
+                </div>
+
+                <div>
+                    <button type="submit" id="submit-button" class="w-full bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 ease-in-out transform hover:scale-105 flex items-center justify-center">
+                        <i class="fas fa-magic-wand-sparkles mr-2"></i>
+                        Analyze Now
+                    </button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const jdFileInput = document.getElementById('jdFile');
+        const resumeFilesInput = document.getElementById('resumeFiles');
+        const jdFilenameSpan = document.getElementById('jd-filename');
+        const resumeFilenamesSpan = document.getElementById('resume-filenames');
+        const loadingDiv = document.getElementById('loading');
+        const submitButton = document.getElementById('submit-button');
+
+        jdFileInput.addEventListener('change', () => {
+            jdFilenameSpan.textContent = jdFileInput.files[0] ? jdFileInput.files[0].name : 'PDF or DOCX';
+        });
+        resumeFilesInput.addEventListener('change', () => {
+            const count = resumeFilesInput.files.length;
+            resumeFilenamesSpan.textContent = count > 1 ? `${count} files selected` : count === 1 ? resumeFilesInput.files[0].name : 'Select one or more files';
+        });
+
+        form.addEventListener('submit', () => {
+            if (jdFileInput.files.length > 0 && resumeFilesInput.files.length > 0) {
+                loadingDiv.classList.remove('hidden');
+                submitButton.disabled = true;
+                submitButton.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> Processing...';
+            }
+        });
+    </script>
+</body>
+</html>
